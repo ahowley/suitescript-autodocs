@@ -9,7 +9,7 @@
   <scriptfile>[/SuiteScripts/NG SuiteScript Documentation/create-docs-ue.js]</scriptfile>
   <scriptdeployments>
     <scriptdeployment scriptid="customdeploy_ng_create_docs_ue">
-      <allemployees>F</allemployees>
+      <allemployees>T</allemployees>
       <alllocalizationcontexts>T</alllocalizationcontexts>
       <allpartners>F</allpartners>
       <allroles>F</allroles>
