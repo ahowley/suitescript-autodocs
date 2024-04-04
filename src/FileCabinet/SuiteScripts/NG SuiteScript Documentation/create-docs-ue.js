@@ -9,7 +9,7 @@
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/ui/serverWidget"], function (require, exports, error_1, file_1, log_1, record_1, serverWidget_1) {
+define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runtime", "N/search", "N/ui/serverWidget"], function (require, exports, error_1, file_1, log_1, record_1, runtime_1, search_1, serverWidget_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.beforeLoad = void 0;
@@ -17,6 +17,8 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/ui/se
     file_1 = __importDefault(file_1);
     log_1 = __importDefault(log_1);
     record_1 = __importDefault(record_1);
+    runtime_1 = __importDefault(runtime_1);
+    search_1 = __importDefault(search_1);
     serverWidget_1 = __importDefault(serverWidget_1);
     const ALREADY_COUNTED = new Set();
     function addDependenciesTabToForm(context) {
@@ -38,8 +40,18 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/ui/se
         });
         sublist.addField({
             id: "custpage_col_id",
-            label: "ID",
+            label: "ID or Path",
             type: serverWidget_1.default.FieldType.TEXT,
+        });
+        sublist.addField({
+            id: "custpage_col_name",
+            label: "Name",
+            type: serverWidget_1.default.FieldType.TEXT,
+        });
+        sublist.addField({
+            id: "custpage_col_link",
+            label: "Link",
+            type: serverWidget_1.default.FieldType.URL,
         });
         return sublist;
     }
@@ -100,13 +112,39 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/ui/se
             });
         });
     }
+    function getSavedSearchDependencyFromId(searchId, accountId) {
+        const savedSearch = search_1.default.create({
+            type: search_1.default.Type.SAVED_SEARCH,
+            filters: [["id", "is", searchId]],
+            columns: [
+                search_1.default.createColumn({ name: "internalid", label: "Internal ID" }),
+                search_1.default.createColumn({ name: "title", label: "Title" }),
+            ],
+        });
+        let name;
+        let link;
+        savedSearch.run().each(result => {
+            name = result.getValue("title");
+            const internalId = result.getValue("internalid").toString();
+            link = `https://${accountId}.app.netsuite.com/app/common/search/search.nl?cu=T&e=T&id=${internalId}`;
+            return false;
+        });
+        return {
+            type: "Saved Search",
+            id: searchId,
+            name,
+            link,
+        };
+    }
     function getDependenciesFromLine(line) {
         const lineLowered = line.toLowerCase();
         const lineStripped = lineLowered.replaceAll(" ", "").replaceAll("'", '"');
+        const accountId = runtime_1.default.accountId.toLowerCase().replace("_", "-");
         const dependencies = [
             ...(lineLowered.match(/customrecord[a-z0-9_]+/) ?? []).map(id => ({
                 type: "Custom Record",
                 id,
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
             })),
             ...(lineStripped.match(/type.customrecord\+"[a-z0-9_]+(?=")/g) ?? []).map(id => ({
                 type: "Custom Record",
@@ -116,10 +154,7 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/ui/se
                 type: "Custom Record",
                 id: id.replace("type.customrecord}", "customrecord"),
             })),
-            ...(lineLowered.match(/customsearch[a-z0-9_]+/g) ?? []).map(id => ({
-                type: "Saved Search",
-                id,
-            })),
+            ...(lineLowered.match(/customsearch[a-z0-9_]+/g) ?? []).map(id => getSavedSearchDependencyFromId(id, accountId)),
             ...(lineLowered.match(/customlist[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Custom List",
                 id,
@@ -155,12 +190,9 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/ui/se
         ];
         return dependencies;
     }
-    function addScriptDependenciesToSublist(sublist, lines, customModulePaths) {
+    function addScriptDependenciesToSublist(sublist, lines, customModules) {
         const dependencies = lines.flatMap(getDependenciesFromLine);
-        dependencies.push(...customModulePaths.map(path => ({
-            type: "Custom SuiteScript Module",
-            id: path,
-        })));
+        dependencies.push(...customModules);
         for (const dependency of dependencies) {
             if (ALREADY_COUNTED.has(dependency.id))
                 continue;
@@ -175,6 +207,18 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/ui/se
                 value: dependency.id,
                 line: index,
             });
+            dependency.name &&
+                sublist.setSublistValue({
+                    id: "custpage_col_name",
+                    value: dependency.name,
+                    line: index,
+                });
+            dependency.link &&
+                sublist.setSublistValue({
+                    id: "custpage_col_link",
+                    value: dependency.link,
+                    line: index,
+                });
             ALREADY_COUNTED.add(dependency.id);
         }
     }
@@ -182,19 +226,25 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/ui/se
         const scriptFolderPath = getScriptFileFolderPath(scriptFile);
         const lines = getScriptFileLines(scriptFile);
         const allRelativePathsInScript = getAllRelativePathsFromLines(scriptFolderPath, lines);
-        const customModulePaths = [];
+        const customModules = [];
+        const accountId = runtime_1.default.accountId.toLowerCase().replace("_", "-");
         for (const path of allRelativePathsInScript) {
             try {
                 const referencedFile = file_1.default.load(path.endsWith(".js") ? path : `${path}.js`);
                 detectAndAddAllScriptDependencies(sublist, referencedFile);
-                customModulePaths.push(referencedFile.path);
+                customModules.push({
+                    type: "Custom SuiteScript Module",
+                    id: referencedFile.path,
+                    name: referencedFile.name,
+                    link: `https://${accountId}.app.netsuite.com/app/common/media/mediaitem.nl?id=${referencedFile.id}&e=F`,
+                });
             }
             catch (_) {
                 log_1.default.debug("Path does not contain a module, or failed to load:", path);
                 continue;
             }
         }
-        addScriptDependenciesToSublist(sublist, lines, customModulePaths);
+        addScriptDependenciesToSublist(sublist, lines, customModules);
     }
     const beforeLoad = context => {
         const sublist = addDependenciesTabToForm(context);

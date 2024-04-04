@@ -11,6 +11,8 @@ import error from "N/error";
 import file from "N/file";
 import log from "N/log";
 import record from "N/record";
+import runtime from "N/runtime";
+import search from "N/search";
 import { EntryPoints } from "N/types";
 import serverWidget from "N/ui/serverWidget";
 
@@ -19,6 +21,8 @@ const ALREADY_COUNTED = new Set<string>();
 type Dependency = {
   type: string;
   id: string;
+  name?: string;
+  link?: string;
 };
 
 function addDependenciesTabToForm(context: EntryPoints.UserEvent.beforeLoadContext) {
@@ -40,8 +44,18 @@ function addDependenciesTabToForm(context: EntryPoints.UserEvent.beforeLoadConte
   });
   sublist.addField({
     id: "custpage_col_id",
-    label: "ID",
+    label: "ID or Path",
     type: serverWidget.FieldType.TEXT,
+  });
+  sublist.addField({
+    id: "custpage_col_name",
+    label: "Name",
+    type: serverWidget.FieldType.TEXT,
+  });
+  sublist.addField({
+    id: "custpage_col_link",
+    label: "Link",
+    type: serverWidget.FieldType.URL,
   });
 
   return sublist;
@@ -109,13 +123,41 @@ function getAllRelativePathsFromLines(basePath: string, lines: string[]): string
   });
 }
 
+function getSavedSearchDependencyFromId(searchId: string, accountId: string): Dependency {
+  const savedSearch = search.create({
+    type: search.Type.SAVED_SEARCH,
+    filters: [["id", "is", searchId]],
+    columns: [
+      search.createColumn({ name: "internalid", label: "Internal ID" }),
+      search.createColumn({ name: "title", label: "Title" }),
+    ],
+  });
+  let name: string;
+  let link: string;
+  savedSearch.run().each(result => {
+    name = result.getValue("title") as string;
+    const internalId = result.getValue("internalid").toString();
+    link = `https://${accountId}.app.netsuite.com/app/common/search/search.nl?cu=T&e=T&id=${internalId}`;
+    return false;
+  });
+
+  return {
+    type: "Saved Search",
+    id: searchId,
+    name,
+    link,
+  };
+}
+
 function getDependenciesFromLine(line: string): Dependency[] {
   const lineLowered = line.toLowerCase();
   const lineStripped = lineLowered.replaceAll(" ", "").replaceAll("'", '"');
+  const accountId = runtime.accountId.toLowerCase().replace("_", "-");
   const dependencies: Dependency[] = [
     ...(lineLowered.match(/customrecord[a-z0-9_]+/) ?? ([] as string[])).map(id => ({
       type: "Custom Record",
       id,
+      link: `https://${accountId}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
     })),
     ...(lineStripped.match(/type.customrecord\+"[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Custom Record",
@@ -125,10 +167,9 @@ function getDependenciesFromLine(line: string): Dependency[] {
       type: "Custom Record",
       id: id.replace("type.customrecord}", "customrecord"),
     })),
-    ...(lineLowered.match(/customsearch[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
-      type: "Saved Search",
-      id,
-    })),
+    ...(lineLowered.match(/customsearch[a-z0-9_]+/g) ?? ([] as string[])).map(id =>
+      getSavedSearchDependencyFromId(id, accountId),
+    ),
     ...(lineLowered.match(/customlist[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Custom List",
       id,
@@ -166,14 +207,9 @@ function getDependenciesFromLine(line: string): Dependency[] {
   return dependencies;
 }
 
-function addScriptDependenciesToSublist(sublist: serverWidget.Sublist, lines: string[], customModulePaths: string[]) {
+function addScriptDependenciesToSublist(sublist: serverWidget.Sublist, lines: string[], customModules: Dependency[]) {
   const dependencies = lines.flatMap(getDependenciesFromLine);
-  dependencies.push(
-    ...customModulePaths.map(path => ({
-      type: "Custom SuiteScript Module",
-      id: path,
-    })),
-  );
+  dependencies.push(...customModules);
 
   for (const dependency of dependencies) {
     if (ALREADY_COUNTED.has(dependency.id)) continue;
@@ -189,6 +225,18 @@ function addScriptDependenciesToSublist(sublist: serverWidget.Sublist, lines: st
       value: dependency.id,
       line: index,
     });
+    dependency.name &&
+      sublist.setSublistValue({
+        id: "custpage_col_name",
+        value: dependency.name,
+        line: index,
+      });
+    dependency.link &&
+      sublist.setSublistValue({
+        id: "custpage_col_link",
+        value: dependency.link,
+        line: index,
+      });
     ALREADY_COUNTED.add(dependency.id);
   }
 }
@@ -197,18 +245,24 @@ function detectAndAddAllScriptDependencies(sublist: serverWidget.Sublist, script
   const scriptFolderPath = getScriptFileFolderPath(scriptFile);
   const lines = getScriptFileLines(scriptFile);
   const allRelativePathsInScript = getAllRelativePathsFromLines(scriptFolderPath, lines);
-  const customModulePaths: string[] = [];
+  const customModules: Dependency[] = [];
+  const accountId = runtime.accountId.toLowerCase().replace("_", "-");
   for (const path of allRelativePathsInScript) {
     try {
       const referencedFile = file.load(path.endsWith(".js") ? path : `${path}.js`);
       detectAndAddAllScriptDependencies(sublist, referencedFile);
-      customModulePaths.push(referencedFile.path);
+      customModules.push({
+        type: "Custom SuiteScript Module",
+        id: referencedFile.path,
+        name: referencedFile.name,
+        link: `https://${accountId}.app.netsuite.com/app/common/media/mediaitem.nl?id=${referencedFile.id}&e=F`,
+      });
     } catch (_) {
       log.debug("Path does not contain a module, or failed to load:", path);
       continue;
     }
   }
-  addScriptDependenciesToSublist(sublist, lines, customModulePaths);
+  addScriptDependenciesToSublist(sublist, lines, customModules);
 }
 
 export const beforeLoad: EntryPoints.UserEvent.beforeLoad = context => {
