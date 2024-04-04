@@ -75,97 +75,105 @@ function loadScriptByInternalId(id: number, typeIndex = 0): record.Record {
   }
 }
 
-function getScriptFileLines(script: record.Record): string[] {
+function getScriptFile(script: record.Record): file.File {
   const scriptFileId = script.getValue("scriptfile") as number;
-  const scriptFile = file.load(scriptFileId);
+  return file.load(scriptFileId);
+}
+
+function getScriptFileFolderPath(scriptFile: file.File): string {
+  const fullPath = scriptFile.path;
+  return fullPath.replace(`/${scriptFile.name}`, "");
+}
+
+function getScriptFileLines(scriptFile: file.File): string[] {
   return scriptFile
     .getContents()
     .split("\n")
     .map(line => line.trim().replace(/ +/g, " "));
 }
 
+function getAllRelativePathsFromLines(basePath: string, lines: string[]): string[] {
+  return lines.flatMap(line => {
+    const lineStripped = line.replaceAll(" ", "").replaceAll("'", '"');
+    const matches = lineStripped.match(/(?<=")\.+\/[\w\/\-]+(?=")/g) ?? ([] as string[]);
+    return matches.map(match => {
+      const folderDepthToRemove = (basePath.match(/\.\.\//g) ?? []).length;
+      if (folderDepthToRemove > 0) {
+        const foldersInBasePath = basePath.split("/");
+        const newBasePath = foldersInBasePath.slice(0, foldersInBasePath.length - folderDepthToRemove).join("/");
+
+        return `${newBasePath}/${match.replaceAll("../", "")}`;
+      }
+      return `${basePath}/${match.replace("./", "")}`;
+    });
+  });
+}
+
 function getDependenciesFromLine(line: string): Dependency[] {
-  const lineCleaned = line.toLowerCase().replaceAll(" ", "").replaceAll("'", '"');
-  const dependencies: Dependency[] = [];
-  dependencies.push(
-    ...(line.match(/customrecord[a-z0-9_]+/) ?? []).map(id => ({
+  const lineLowered = line.toLowerCase();
+  const lineStripped = lineLowered.replaceAll(" ", "").replaceAll("'", '"');
+  const dependencies: Dependency[] = [
+    ...(lineLowered.match(/customrecord[a-z0-9_]+/) ?? ([] as string[])).map(id => ({
       type: "Custom Record",
       id,
     })),
-  );
-  dependencies.push(
-    ...(lineCleaned.match(/type.customrecord\+"[a-z0-9_]+(?=")/g) ?? []).map(id => ({
+    ...(lineStripped.match(/type.customrecord\+"[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Custom Record",
       id: id.replace('type.customrecord+"', "customrecord"),
     })),
-  );
-  dependencies.push(
-    ...(lineCleaned.match(/type.customrecord}[a-z0-9_]+(?=`)/g) ?? []).map(id => ({
+    ...(lineStripped.match(/type.customrecord}[a-z0-9_]+(?=`)/g) ?? ([] as string[])).map(id => ({
       type: "Custom Record",
       id: id.replace("type.customrecord}", "customrecord"),
     })),
-  );
-  dependencies.push(
-    ...(line.match(/customsearch[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/customsearch[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Saved Search",
       id,
     })),
-  );
-  dependencies.push(
-    ...(line.match(/customlist[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/customlist[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Custom List",
       id,
     })),
-  );
-  dependencies.push(
-    ...(line.match(/custentity[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/custentity[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Custom Entity Field",
       id,
     })),
-  );
-  dependencies.push(
-    ...(line.match(/custitem[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/custitem[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Custom Item Field",
       id,
     })),
-  );
-  dependencies.push(
-    ...(line.match(/custevent[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/custevent[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Custom CRM Field",
       id,
     })),
-  );
-  dependencies.push(
-    ...(line.match(/custbody[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/custbody[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Transaction Body Field",
       id,
     })),
-  );
-  dependencies.push(
-    ...(line.match(/custcol[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/custcol[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Transaction Line Field or Item Option",
       id,
     })),
-  );
-  dependencies.push(
-    ...(line.match(/custitemnumber[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/custitemnumber[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Custom Item Number Field",
       id,
     })),
-  );
-  dependencies.push(
-    ...(line.match(/custrecord[a-z0-9_]+/g) ?? []).map(id => ({
+    ...(lineLowered.match(/custrecord[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
       type: "Other Record/Sublist Fields",
       id,
     })),
-  );
+  ];
 
   return dependencies;
 }
 
-function addScriptDependenciesToSublist(sublist: serverWidget.Sublist, script: record.Record) {
-  const lines = getScriptFileLines(script);
+function addScriptDependenciesToSublist(sublist: serverWidget.Sublist, lines: string[], customModulePaths: string[]) {
   const dependencies = lines.flatMap(getDependenciesFromLine);
+  dependencies.push(
+    ...customModulePaths.map(path => ({
+      type: "Custom SuiteScript Module",
+      id: path,
+    })),
+  );
 
   for (const dependency of dependencies) {
     if (ALREADY_COUNTED.has(dependency.id)) continue;
@@ -185,11 +193,30 @@ function addScriptDependenciesToSublist(sublist: serverWidget.Sublist, script: r
   }
 }
 
+function detectAndAddAllScriptDependencies(sublist: serverWidget.Sublist, scriptFile: file.File) {
+  const scriptFolderPath = getScriptFileFolderPath(scriptFile);
+  const lines = getScriptFileLines(scriptFile);
+  const allRelativePathsInScript = getAllRelativePathsFromLines(scriptFolderPath, lines);
+  const customModulePaths: string[] = [];
+  for (const path of allRelativePathsInScript) {
+    try {
+      const referencedFile = file.load(path.endsWith(".js") ? path : `${path}.js`);
+      detectAndAddAllScriptDependencies(sublist, referencedFile);
+      customModulePaths.push(referencedFile.path);
+    } catch (_) {
+      log.debug("Path does not contain a module, or failed to load:", path);
+      continue;
+    }
+  }
+  addScriptDependenciesToSublist(sublist, lines, customModulePaths);
+}
+
 export const beforeLoad: EntryPoints.UserEvent.beforeLoad = context => {
   const sublist = addDependenciesTabToForm(context);
   const scriptInternalIds = context.newRecord.getValue("custrecord_ng_associated_scripts") as number[];
   for (const id of scriptInternalIds) {
     const script = loadScriptByInternalId(id);
-    addScriptDependenciesToSublist(sublist, script);
+    const scriptFile = getScriptFile(script);
+    detectAndAddAllScriptDependencies(sublist, scriptFile);
   }
 };
