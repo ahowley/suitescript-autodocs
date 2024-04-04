@@ -126,7 +126,7 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
         savedSearch.run().each(result => {
             name = result.getValue("title");
             const internalId = result.getValue("internalid").toString();
-            link = `https://${accountId}.app.netsuite.com/app/common/search/search.nl?cu=T&e=T&id=${internalId}`;
+            link = `https://${accountId}.app.netsuite.com/app/common/search/search.nl?cu=T&e=F&id=${internalId}`;
             return false;
         });
         return {
@@ -149,43 +149,53 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
             ...(lineStripped.match(/type.customrecord\+"[a-z0-9_]+(?=")/g) ?? []).map(id => ({
                 type: "Custom Record",
                 id: id.replace('type.customrecord+"', "customrecord"),
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
             })),
             ...(lineStripped.match(/type.customrecord}[a-z0-9_]+(?=`)/g) ?? []).map(id => ({
                 type: "Custom Record",
                 id: id.replace("type.customrecord}", "customrecord"),
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
             })),
             ...(lineLowered.match(/customsearch[a-z0-9_]+/g) ?? []).map(id => getSavedSearchDependencyFromId(id, accountId)),
             ...(lineLowered.match(/customlist[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Custom List",
                 id,
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/custlists.nl?whence=`,
             })),
             ...(lineLowered.match(/custentity[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Custom Entity Field",
                 id,
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/entitycustfields.nl?whence=`,
             })),
             ...(lineLowered.match(/custitem[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Custom Item Field",
                 id,
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/itemcustfields.nl?whence=`,
             })),
             ...(lineLowered.match(/custevent[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Custom CRM Field",
                 id,
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/eventcustfields.nl?whence=`,
             })),
             ...(lineLowered.match(/custbody[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Transaction Body Field",
                 id,
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/bodycustfields.nl?whence=`,
             })),
             ...(lineLowered.match(/custcol[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Transaction Line Field or Item Option",
                 id,
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/columncustfields.nl?whence=`,
             })),
             ...(lineLowered.match(/custitemnumber[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Custom Item Number Field",
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/itemnumbercustfields.nl?whence=`,
                 id,
             })),
             ...(lineLowered.match(/custrecord[a-z0-9_]+/g) ?? []).map(id => ({
                 type: "Other Record/Sublist Fields",
                 id,
+                link: `https://${accountId}.app.netsuite.com/app/common/custom/othercustfields.nl?whence=`,
             })),
         ];
         return dependencies;
