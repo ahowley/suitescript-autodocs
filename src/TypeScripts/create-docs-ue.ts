@@ -25,6 +25,10 @@ type Dependency = {
   link?: string;
 };
 
+function accountId() {
+  return runtime.accountId.toLowerCase().replace("_", "-");
+}
+
 function addDependenciesTabToForm(context: EntryPoints.UserEvent.beforeLoadContext) {
   const form = context.form;
   form.addTab({
@@ -150,76 +154,78 @@ function getSavedSearchDependencyFromId(searchId: string, accountId: string): De
 }
 
 function getDependenciesFromLine(line: string): Dependency[] {
-  const lineLowered = line.toLowerCase();
-  const lineStripped = lineLowered.replaceAll(" ", "").replaceAll("'", '"');
-  const accountId = runtime.accountId.toLowerCase().replace("_", "-");
-  const dependencies: Dependency[] = [
-    ...(lineLowered.match(/customrecord[a-z0-9_]+/) ?? ([] as string[])).map(id => ({
+  const lineStripped = line.toLowerCase().replaceAll("'", '"').replaceAll(" ", "");
+  return [
+    ...(lineStripped.match(/customrecord[a-z0-9_]+(?=")/) ?? ([] as string[])).map(id => ({
       type: "Custom Record",
       id,
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
     })),
     ...(lineStripped.match(/type.customrecord\+"[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Custom Record",
       id: id.replace('type.customrecord+"', "customrecord"),
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
     })),
     ...(lineStripped.match(/type.customrecord}[a-z0-9_]+(?=`)/g) ?? ([] as string[])).map(id => ({
       type: "Custom Record",
       id: id.replace("type.customrecord}", "customrecord"),
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
     })),
-    ...(lineLowered.match(/customsearch[a-z0-9_]+/g) ?? ([] as string[])).map(id =>
-      getSavedSearchDependencyFromId(id, accountId),
+    ...(lineStripped.match(/customsearch[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id =>
+      getSavedSearchDependencyFromId(id, accountId()),
     ),
-    ...(lineLowered.match(/customlist[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
+    ...(lineStripped.match(/customlist[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Custom List",
       id,
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/custlists.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/custlists.nl?whence=`,
     })),
-    ...(lineLowered.match(/custentity[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
+    ...(lineStripped.match(/custentity[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Custom Entity Field",
       id,
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/entitycustfields.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/entitycustfields.nl?whence=`,
     })),
-    ...(lineLowered.match(/custitem[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
+    ...(lineStripped.match(/custitem[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Custom Item Field",
       id,
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/itemcustfields.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/itemcustfields.nl?whence=`,
     })),
-    ...(lineLowered.match(/custevent[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
+    ...(lineStripped.match(/custevent[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Custom CRM Field",
       id,
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/eventcustfields.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/eventcustfields.nl?whence=`,
     })),
-    ...(lineLowered.match(/custbody[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
+    ...(lineStripped.match(/custbody[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Transaction Body Field",
       id,
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/bodycustfields.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/bodycustfields.nl?whence=`,
     })),
-    ...(lineLowered.match(/custcol[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
+    ...(lineStripped.match(/custcol[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Transaction Line Field or Item Option",
       id,
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/columncustfields.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/columncustfields.nl?whence=`,
     })),
-    ...(lineLowered.match(/custitemnumber[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
+    ...(lineStripped.match(/custitemnumber[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Custom Item Number Field",
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/itemnumbercustfields.nl?whence=`,
       id,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/itemnumbercustfields.nl?whence=`,
     })),
-    ...(lineLowered.match(/custrecord[a-z0-9_]+/g) ?? ([] as string[])).map(id => ({
+    ...(lineStripped.match(/custrecord[a-z0-9_]+(?=")/g) ?? ([] as string[])).map(id => ({
       type: "Other Record/Sublist Fields",
       id,
-      link: `https://${accountId}.app.netsuite.com/app/common/custom/othercustfields.nl?whence=`,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/othercustfields.nl?whence=`,
     })),
   ];
-
-  return dependencies;
 }
 
-function addScriptDependenciesToSublist(sublist: serverWidget.Sublist, lines: string[], customModules: Dependency[]) {
+function addScriptDependenciesToSublist(
+  sublist: serverWidget.Sublist,
+  lines: string[],
+  customModules: Dependency[],
+  directDependencies?: Dependency[],
+) {
   const dependencies = lines.flatMap(getDependenciesFromLine);
   dependencies.push(...customModules);
+  directDependencies && dependencies.push(...directDependencies);
 
   for (const dependency of dependencies) {
     if (ALREADY_COUNTED.has(dependency.id)) continue;
@@ -251,12 +257,52 @@ function addScriptDependenciesToSublist(sublist: serverWidget.Sublist, lines: st
   }
 }
 
-function detectAndAddAllScriptDependencies(sublist: serverWidget.Sublist, scriptFile: file.File) {
+function searchDeploymentsAsDependencies(scriptInternalId: number): Dependency[] {
+  const deploymentSearch = search.create({
+    type: "scriptdeployment",
+    filters: [["script", "is", "4696"]],
+    columns: [search.createColumn({ name: "recordtype", label: "Record Type" })],
+  });
+  const deploymentDependencies: Dependency[] = [];
+  deploymentSearch.run().each(function (result) {
+    const recordTypeId = (result.getValue("recordtype") as string).toLowerCase();
+    if (!recordTypeId.startsWith("customrecord")) return true;
+
+    const recordTypeName = result.getText("recordtype");
+    deploymentDependencies.push({
+      type: "Custom Record",
+      id: recordTypeId,
+      name: recordTypeName,
+      link: `https://${accountId()}.app.netsuite.com/app/common/custom/custrecords.nl?whence=`,
+    });
+    return true;
+  });
+
+  return deploymentDependencies;
+}
+
+function getDirectScriptDependencies(script: record.Record): Dependency[] {
+  const scriptAsDependency: Dependency = {
+    type: script.type as string,
+    id: script.getValue("scriptid") as string,
+    name: script.getValue("name") as string,
+    link: `https://${accountId()}.app.netsuite.com/app/common/scripting/script.nl?id=${script.getValue("id")}`,
+  };
+  const directDependencies = [scriptAsDependency];
+  directDependencies.push(...searchDeploymentsAsDependencies(script.getValue("id") as number));
+
+  return directDependencies;
+}
+
+function detectAndAddAllScriptDependencies(
+  sublist: serverWidget.Sublist,
+  scriptFile: file.File,
+  directDependencies?: Dependency[],
+) {
   const scriptFolderPath = getScriptFileFolderPath(scriptFile);
   const lines = getScriptFileLines(scriptFile);
   const allRelativePathsInScript = getAllRelativePathsFromLines(scriptFolderPath, lines);
   const customModules: Dependency[] = [];
-  const accountId = runtime.accountId.toLowerCase().replace("_", "-");
   for (const path of allRelativePathsInScript) {
     try {
       const referencedFile = file.load(path.endsWith(".js") ? path : `${path}.js`);
@@ -265,14 +311,14 @@ function detectAndAddAllScriptDependencies(sublist: serverWidget.Sublist, script
         type: "Custom SuiteScript Module",
         id: referencedFile.path,
         name: referencedFile.name,
-        link: `https://${accountId}.app.netsuite.com/app/common/media/mediaitem.nl?id=${referencedFile.id}&e=F`,
+        link: `https://${accountId()}.app.netsuite.com/app/common/media/mediaitem.nl?id=${referencedFile.id}&e=F`,
       });
     } catch (_) {
       log.debug("Path does not contain a module, or failed to load:", path);
       continue;
     }
   }
-  addScriptDependenciesToSublist(sublist, lines, customModules);
+  addScriptDependenciesToSublist(sublist, lines, customModules, directDependencies);
 }
 
 export const beforeLoad: EntryPoints.UserEvent.beforeLoad = context => {
@@ -281,6 +327,7 @@ export const beforeLoad: EntryPoints.UserEvent.beforeLoad = context => {
   for (const id of scriptInternalIds) {
     const script = loadScriptByInternalId(id);
     const scriptFile = getScriptFile(script);
-    detectAndAddAllScriptDependencies(sublist, scriptFile);
+    const directDependencies = getDirectScriptDependencies(script);
+    detectAndAddAllScriptDependencies(sublist, scriptFile, directDependencies);
   }
 };
