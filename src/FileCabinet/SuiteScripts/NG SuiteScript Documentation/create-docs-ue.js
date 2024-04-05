@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runtime", "N/search", "N/ui/serverWidget"], function (require, exports, error_1, file_1, log_1, record_1, runtime_1, search_1, serverWidget_1) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
-    exports.beforeLoad = void 0;
+    exports.beforeSubmit = exports.beforeLoad = void 0;
     error_1 = __importDefault(error_1);
     file_1 = __importDefault(file_1);
     log_1 = __importDefault(log_1);
@@ -24,21 +24,21 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
     function accountId() {
         return runtime_1.default.accountId.toLowerCase().replace("_", "-");
     }
-    function addDependenciesTabToForm(context) {
+    function addDependenciesTabToForm(context, sublistIdSlug = "dependencies") {
         const form = context.form;
         form.addTab({
-            id: "custpage_dependency_tab",
-            label: "Dependencies",
+            id: `custpage_${sublistIdSlug}_tab`,
+            label: (sublistIdSlug === "dependencies" ? "" : "Extra ") + "Dependencies",
         });
         const sublist = form.addSublist({
-            id: "custpage_dependencies",
-            label: "Dependencies",
-            tab: "custpage_dependency_tab",
-            type: serverWidget_1.default.SublistType.LIST,
+            id: `custpage_${sublistIdSlug}`,
+            label: (sublistIdSlug === "dependencies" ? "" : "Extra ") + "Dependencies",
+            tab: `custpage_${sublistIdSlug}_tab`,
+            type: sublistIdSlug === "dependencies" ? serverWidget_1.default.SublistType.LIST : serverWidget_1.default.SublistType.INLINEEDITOR,
         });
         sublist.addField({
             id: "custpage_col_type",
-            label: "Type",
+            label: "Dependency Type",
             type: serverWidget_1.default.FieldType.TEXT,
         });
         sublist.addField({
@@ -57,6 +57,37 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
             type: serverWidget_1.default.FieldType.URL,
         });
         return sublist;
+    }
+    function storeExtraDependencyData(docsRecord) {
+        const extraDependencyCount = docsRecord.getLineCount("custpage_extra_dependencies");
+        const extraDependencyData = [];
+        for (let extraDependencyLine = 0; extraDependencyLine < extraDependencyCount; extraDependencyLine++) {
+            const type = docsRecord.getSublistValue({
+                sublistId: "custpage_extra_dependencies",
+                fieldId: "custpage_col_type",
+                line: extraDependencyLine,
+            });
+            const id = docsRecord.getSublistValue({
+                sublistId: "custpage_extra_dependencies",
+                fieldId: "custpage_col_id",
+                line: extraDependencyLine,
+            });
+            const name = (docsRecord.getSublistValue({
+                sublistId: "custpage_extra_dependencies",
+                fieldId: "custpage_col_name",
+                line: extraDependencyLine,
+            }) || undefined);
+            const link = (docsRecord.getSublistValue({
+                sublistId: "custpage_extra_dependencies",
+                fieldId: "custpage_col_link",
+                line: extraDependencyLine,
+            }) || undefined);
+            extraDependencyData.push({ type, id, name, link });
+        }
+        docsRecord.setValue({
+            fieldId: "custrecord_ng_extra_dependency_data",
+            value: JSON.stringify(extraDependencyData),
+        });
     }
     function loadScriptByInternalId(id, typeIndex = 0) {
         const SCRIPT_TYPES = [
@@ -200,10 +231,10 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
             })),
         ];
     }
-    function addScriptDependenciesToSublist(sublist, lines, customModules, directDependencies) {
+    function addScriptDependenciesToSublist(sublist, lines, customModules, extraDependencies) {
         const dependencies = lines.flatMap(getDependenciesFromLine);
         dependencies.push(...customModules);
-        directDependencies && dependencies.push(...directDependencies);
+        extraDependencies && dependencies.push(...extraDependencies);
         for (const dependency of dependencies) {
             if (ALREADY_COUNTED.has(dependency.id))
                 continue;
@@ -231,6 +262,33 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
                     line: index,
                 });
             ALREADY_COUNTED.add(dependency.id);
+        }
+    }
+    function loadExtraDependenciesIntoSublist(docsRecord, sublist) {
+        const rawDependencyData = docsRecord.getValue("custrecord_ng_extra_dependency_data");
+        const dependencies = JSON.parse(rawDependencyData || "[]");
+        for (const dependency of dependencies) {
+            const index = sublist.lineCount === -1 ? 0 : sublist.lineCount;
+            sublist.setSublistValue({
+                id: "custpage_col_type",
+                value: dependency.type,
+                line: index,
+            });
+            sublist.setSublistValue({
+                id: "custpage_col_id",
+                value: dependency.id,
+                line: index,
+            });
+            sublist.setSublistValue({
+                id: "custpage_col_name",
+                value: dependency.name,
+                line: index,
+            });
+            sublist.setSublistValue({
+                id: "custpage_col_link",
+                value: dependency.link,
+                line: index,
+            });
         }
     }
     function searchDeploymentsAsDependencies(scriptInternalId) {
@@ -266,7 +324,7 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
         directDependencies.push(...searchDeploymentsAsDependencies(script.getValue("id")));
         return directDependencies;
     }
-    function detectAndAddAllScriptDependencies(sublist, scriptFile, directDependencies) {
+    function detectAndAddAllScriptDependencies(sublist, scriptFile, extraDependencies) {
         const scriptFolderPath = getScriptFileFolderPath(scriptFile);
         const lines = getScriptFileLines(scriptFile);
         const allRelativePathsInScript = getAllRelativePathsFromLines(scriptFolderPath, lines);
@@ -287,17 +345,34 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
                 continue;
             }
         }
-        addScriptDependenciesToSublist(sublist, lines, customModules, directDependencies);
+        addScriptDependenciesToSublist(sublist, lines, customModules, extraDependencies);
     }
     const beforeLoad = context => {
-        const sublist = addDependenciesTabToForm(context);
+        if ([context.UserEventType.EDIT, context.UserEventType.CREATE].includes(context.type)) {
+            const extraDependenciesSublist = addDependenciesTabToForm(context, "extra_dependencies");
+            if (context.type === context.UserEventType.EDIT) {
+                loadExtraDependenciesIntoSublist(context.newRecord, extraDependenciesSublist);
+            }
+        }
+        if (![context.UserEventType.EDIT, context.UserEventType.VIEW].includes(context.type)) {
+            return;
+        }
+        const dependenciesSublist = addDependenciesTabToForm(context);
         const scriptInternalIds = context.newRecord.getValue("custrecord_ng_associated_scripts");
         for (const id of scriptInternalIds) {
             const script = loadScriptByInternalId(id);
             const scriptFile = getScriptFile(script);
-            const directDependencies = getDirectScriptDependencies(script);
-            detectAndAddAllScriptDependencies(sublist, scriptFile, directDependencies);
+            const extraDependencies = getDirectScriptDependencies(script);
+            detectAndAddAllScriptDependencies(dependenciesSublist, scriptFile, extraDependencies);
         }
+        loadExtraDependenciesIntoSublist(context.newRecord, dependenciesSublist);
     };
     exports.beforeLoad = beforeLoad;
+    const beforeSubmit = context => {
+        if (![context.UserEventType.EDIT, context.UserEventType.CREATE].includes(context.type)) {
+            return;
+        }
+        storeExtraDependencyData(context.newRecord);
+    };
+    exports.beforeSubmit = beforeSubmit;
 });

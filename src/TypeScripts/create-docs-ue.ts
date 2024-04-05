@@ -14,6 +14,7 @@ import record from "N/record";
 import runtime from "N/runtime";
 import search from "N/search";
 import { EntryPoints } from "N/types";
+import dialog from "N/ui/dialog";
 import serverWidget from "N/ui/serverWidget";
 
 const ALREADY_COUNTED = new Set<string>();
@@ -29,21 +30,21 @@ function accountId() {
   return runtime.accountId.toLowerCase().replace("_", "-");
 }
 
-function addDependenciesTabToForm(context: EntryPoints.UserEvent.beforeLoadContext) {
+function addDependenciesTabToForm(context: EntryPoints.UserEvent.beforeLoadContext, sublistIdSlug = "dependencies") {
   const form = context.form;
   form.addTab({
-    id: "custpage_dependency_tab",
-    label: "Dependencies",
+    id: `custpage_${sublistIdSlug}_tab`,
+    label: (sublistIdSlug === "dependencies" ? "" : "Extra ") + "Dependencies",
   });
   const sublist = form.addSublist({
-    id: "custpage_dependencies",
-    label: "Dependencies",
-    tab: "custpage_dependency_tab",
-    type: serverWidget.SublistType.LIST,
+    id: `custpage_${sublistIdSlug}`,
+    label: (sublistIdSlug === "dependencies" ? "" : "Extra ") + "Dependencies",
+    tab: `custpage_${sublistIdSlug}_tab`,
+    type: sublistIdSlug === "dependencies" ? serverWidget.SublistType.LIST : serverWidget.SublistType.INLINEEDITOR,
   });
   sublist.addField({
     id: "custpage_col_type",
-    label: "Type",
+    label: "Dependency Type",
     type: serverWidget.FieldType.TEXT,
   });
   sublist.addField({
@@ -63,6 +64,40 @@ function addDependenciesTabToForm(context: EntryPoints.UserEvent.beforeLoadConte
   });
 
   return sublist;
+}
+
+function storeExtraDependencyData(docsRecord: record.Record) {
+  const extraDependencyCount = docsRecord.getLineCount("custpage_extra_dependencies");
+  const extraDependencyData: Dependency[] = [];
+  for (let extraDependencyLine = 0; extraDependencyLine < extraDependencyCount; extraDependencyLine++) {
+    const type = docsRecord.getSublistValue({
+      sublistId: "custpage_extra_dependencies",
+      fieldId: "custpage_col_type",
+      line: extraDependencyLine,
+    }) as string;
+    const id = docsRecord.getSublistValue({
+      sublistId: "custpage_extra_dependencies",
+      fieldId: "custpage_col_id",
+      line: extraDependencyLine,
+    }) as string;
+    const name = (docsRecord.getSublistValue({
+      sublistId: "custpage_extra_dependencies",
+      fieldId: "custpage_col_name",
+      line: extraDependencyLine,
+    }) || undefined) as string;
+    const link = (docsRecord.getSublistValue({
+      sublistId: "custpage_extra_dependencies",
+      fieldId: "custpage_col_link",
+      line: extraDependencyLine,
+    }) || undefined) as string;
+
+    extraDependencyData.push({ type, id, name, link });
+  }
+
+  docsRecord.setValue({
+    fieldId: "custrecord_ng_extra_dependency_data",
+    value: JSON.stringify(extraDependencyData),
+  });
 }
 
 function loadScriptByInternalId(id: number, typeIndex = 0): record.Record {
@@ -221,11 +256,11 @@ function addScriptDependenciesToSublist(
   sublist: serverWidget.Sublist,
   lines: string[],
   customModules: Dependency[],
-  directDependencies?: Dependency[],
+  extraDependencies?: Dependency[],
 ) {
   const dependencies = lines.flatMap(getDependenciesFromLine);
   dependencies.push(...customModules);
-  directDependencies && dependencies.push(...directDependencies);
+  extraDependencies && dependencies.push(...extraDependencies);
 
   for (const dependency of dependencies) {
     if (ALREADY_COUNTED.has(dependency.id)) continue;
@@ -254,6 +289,34 @@ function addScriptDependenciesToSublist(
         line: index,
       });
     ALREADY_COUNTED.add(dependency.id);
+  }
+}
+
+function loadExtraDependenciesIntoSublist(docsRecord: record.Record, sublist: serverWidget.Sublist) {
+  const rawDependencyData = docsRecord.getValue("custrecord_ng_extra_dependency_data") as string;
+  const dependencies = JSON.parse(rawDependencyData || "[]");
+  for (const dependency of dependencies) {
+    const index = sublist.lineCount === -1 ? 0 : sublist.lineCount;
+    sublist.setSublistValue({
+      id: "custpage_col_type",
+      value: dependency.type,
+      line: index,
+    });
+    sublist.setSublistValue({
+      id: "custpage_col_id",
+      value: dependency.id,
+      line: index,
+    });
+    sublist.setSublistValue({
+      id: "custpage_col_name",
+      value: dependency.name,
+      line: index,
+    });
+    sublist.setSublistValue({
+      id: "custpage_col_link",
+      value: dependency.link,
+      line: index,
+    });
   }
 }
 
@@ -297,7 +360,7 @@ function getDirectScriptDependencies(script: record.Record): Dependency[] {
 function detectAndAddAllScriptDependencies(
   sublist: serverWidget.Sublist,
   scriptFile: file.File,
-  directDependencies?: Dependency[],
+  extraDependencies?: Dependency[],
 ) {
   const scriptFolderPath = getScriptFileFolderPath(scriptFile);
   const lines = getScriptFileLines(scriptFile);
@@ -318,16 +381,36 @@ function detectAndAddAllScriptDependencies(
       continue;
     }
   }
-  addScriptDependenciesToSublist(sublist, lines, customModules, directDependencies);
+  addScriptDependenciesToSublist(sublist, lines, customModules, extraDependencies);
 }
 
 export const beforeLoad: EntryPoints.UserEvent.beforeLoad = context => {
-  const sublist = addDependenciesTabToForm(context);
+  if ([context.UserEventType.EDIT, context.UserEventType.CREATE].includes(context.type)) {
+    const extraDependenciesSublist = addDependenciesTabToForm(context, "extra_dependencies");
+    if (context.type === context.UserEventType.EDIT) {
+      loadExtraDependenciesIntoSublist(context.newRecord, extraDependenciesSublist);
+    }
+  }
+  if (![context.UserEventType.EDIT, context.UserEventType.VIEW].includes(context.type)) {
+    return;
+  }
+
+  const dependenciesSublist = addDependenciesTabToForm(context);
   const scriptInternalIds = context.newRecord.getValue("custrecord_ng_associated_scripts") as number[];
   for (const id of scriptInternalIds) {
     const script = loadScriptByInternalId(id);
     const scriptFile = getScriptFile(script);
-    const directDependencies = getDirectScriptDependencies(script);
-    detectAndAddAllScriptDependencies(sublist, scriptFile, directDependencies);
+    const extraDependencies = getDirectScriptDependencies(script);
+    detectAndAddAllScriptDependencies(dependenciesSublist, scriptFile, extraDependencies);
   }
+
+  loadExtraDependenciesIntoSublist(context.newRecord, dependenciesSublist);
+};
+
+export const beforeSubmit: EntryPoints.UserEvent.beforeSubmit = context => {
+  if (![context.UserEventType.EDIT, context.UserEventType.CREATE].includes(context.type)) {
+    return;
+  }
+
+  storeExtraDependencyData(context.newRecord);
 };
