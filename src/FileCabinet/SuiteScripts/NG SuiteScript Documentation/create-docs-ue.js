@@ -298,7 +298,7 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
     function searchDeploymentsAsDependencies(scriptInternalId) {
         const deploymentSearch = search_1.default.create({
             type: "scriptdeployment",
-            filters: [["script", "is", "4696"]],
+            filters: [["script", "is", scriptInternalId]],
             columns: [search_1.default.createColumn({ name: "recordtype", label: "Record Type" })],
         });
         const deploymentDependencies = [];

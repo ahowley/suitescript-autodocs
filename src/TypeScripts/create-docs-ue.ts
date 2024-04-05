@@ -327,7 +327,7 @@ function loadExtraDependenciesIntoSublist(docsRecord: record.Record, sublist: se
 function searchDeploymentsAsDependencies(scriptInternalId: number): Dependency[] {
   const deploymentSearch = search.create({
     type: "scriptdeployment",
-    filters: [["script", "is", "4696"]],
+    filters: [["script", "is", scriptInternalId]],
     columns: [search.createColumn({ name: "recordtype", label: "Record Type" })],
   });
   const deploymentDependencies: Dependency[] = [];
