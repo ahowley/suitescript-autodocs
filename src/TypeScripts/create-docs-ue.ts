@@ -84,12 +84,12 @@ function storeExtraDependencyData(docsRecord: record.Record) {
       sublistId: "custpage_extra_dependencies",
       fieldId: "custpage_col_name",
       line: extraDependencyLine,
-    }) || undefined) as string;
+    }) || undefined) as string | undefined;
     const link = (docsRecord.getSublistValue({
       sublistId: "custpage_extra_dependencies",
       fieldId: "custpage_col_link",
       line: extraDependencyLine,
-    }) || undefined) as string;
+    }) || undefined) as string | undefined;
 
     extraDependencyData.push({ type, id, name, link });
   }
@@ -297,26 +297,30 @@ function loadExtraDependenciesIntoSublist(docsRecord: record.Record, sublist: se
   const dependencies = JSON.parse(rawDependencyData || "[]");
   for (const dependency of dependencies) {
     const index = sublist.lineCount === -1 ? 0 : sublist.lineCount;
-    sublist.setSublistValue({
-      id: "custpage_col_type",
-      value: dependency.type,
-      line: index,
-    });
-    sublist.setSublistValue({
-      id: "custpage_col_id",
-      value: dependency.id,
-      line: index,
-    });
-    sublist.setSublistValue({
-      id: "custpage_col_name",
-      value: dependency.name,
-      line: index,
-    });
-    sublist.setSublistValue({
-      id: "custpage_col_link",
-      value: dependency.link,
-      line: index,
-    });
+    dependency.type &&
+      sublist.setSublistValue({
+        id: "custpage_col_type",
+        value: dependency.type,
+        line: index,
+      });
+    dependency.id &&
+      sublist.setSublistValue({
+        id: "custpage_col_id",
+        value: dependency.id,
+        line: index,
+      });
+    dependency.name &&
+      sublist.setSublistValue({
+        id: "custpage_col_name",
+        value: dependency.name,
+        line: index,
+      });
+    dependency.link &&
+      sublist.setSublistValue({
+        id: "custpage_col_link",
+        value: dependency.link,
+        line: index,
+      });
   }
 }
 

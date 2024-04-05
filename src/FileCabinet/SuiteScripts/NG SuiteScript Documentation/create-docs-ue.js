@@ -269,26 +269,30 @@ define(["require", "exports", "N/error", "N/file", "N/log", "N/record", "N/runti
         const dependencies = JSON.parse(rawDependencyData || "[]");
         for (const dependency of dependencies) {
             const index = sublist.lineCount === -1 ? 0 : sublist.lineCount;
-            sublist.setSublistValue({
-                id: "custpage_col_type",
-                value: dependency.type,
-                line: index,
-            });
-            sublist.setSublistValue({
-                id: "custpage_col_id",
-                value: dependency.id,
-                line: index,
-            });
-            sublist.setSublistValue({
-                id: "custpage_col_name",
-                value: dependency.name,
-                line: index,
-            });
-            sublist.setSublistValue({
-                id: "custpage_col_link",
-                value: dependency.link,
-                line: index,
-            });
+            dependency.type &&
+                sublist.setSublistValue({
+                    id: "custpage_col_type",
+                    value: dependency.type,
+                    line: index,
+                });
+            dependency.id &&
+                sublist.setSublistValue({
+                    id: "custpage_col_id",
+                    value: dependency.id,
+                    line: index,
+                });
+            dependency.name &&
+                sublist.setSublistValue({
+                    id: "custpage_col_name",
+                    value: dependency.name,
+                    line: index,
+                });
+            dependency.link &&
+                sublist.setSublistValue({
+                    id: "custpage_col_link",
+                    value: dependency.link,
+                    line: index,
+                });
         }
     }
     function searchDeploymentsAsDependencies(scriptInternalId) {
